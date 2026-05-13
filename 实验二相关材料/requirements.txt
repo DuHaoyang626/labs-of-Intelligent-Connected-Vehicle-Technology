@@ -1,0 +1,13 @@
+# --- NPU inference (CANN / Ascend) ---
+# ais_bench is provided by CANN toolkit; install via:
+#   pip install ascend-cann-<version>-py3-none-any.whl
+# or from https://www.hiascend.com/
+ais-bench>=0.2.0
+
+# --- CPU/GPU fallback ---
+# ultralytics>=8.2.0    # for --npu mode, this is optional
+
+# --- common ---
+flask>=3.0.0
+opencv-python>=4.8.0
+numpy>=1.24.0
