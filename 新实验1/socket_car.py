@@ -42,25 +42,20 @@ def take_photo():
     print('\nphoto save as %s%s.jpg' % (path, name))
 
 
-def move(operate, spd):
-    if operate == 'stop':
-        px.stop()
-    elif operate == 'forward':
-        px.set_dir_servo_angle(0)
-        px.forward(spd)
-    elif operate == 'backward':
-        px.set_dir_servo_angle(0)
-        px.backward(spd)
-    elif operate == 'turn left':
-        px.set_dir_servo_angle(-30)
-        px.forward(spd)
-    elif operate == 'turn right':
-        px.set_dir_servo_angle(30)
-        px.forward(spd)
-
-
 def handle_command(cmd):
-    """Parse and execute a command. Returns True to continue, False to stop."""
+    """Parse and execute a command. Returns True to continue, False to stop.
+
+    协议格式:
+      state <direction> <speed> <pan> <tilt> <dir_angle>  — 完整状态包
+         direction: stop | forward | backward
+         speed:     0~100
+         pan:       -90~90
+         tilt:      -35~65
+         dir_angle: -30~30 (方向舵机角度, 0=直行)
+      horn                                                   — 鸣笛
+      photo                                                  — 拍照
+      quit                                                   — 退出
+    """
     global speed, status, cam_pan_angle, cam_tilt_angle
 
     cmd = cmd.strip().lower()
@@ -70,53 +65,42 @@ def handle_command(cmd):
     parts = cmd.split()
     action = parts[0]
 
-    if action == 'forward':
-        spd = int(parts[1]) if len(parts) > 1 else speed
-        if spd > 60:
-            spd = 60
-        speed = spd
-        status = 'forward'
-        move(status, speed)
+    # ── 状态包：包含速度、方向、所有舵机角度 ──
+    if action == 'state':
+        if len(parts) < 6:
+            return True
+        direction = parts[1]
+        spd = int(parts[2])
+        pan = int(parts[3])
+        tilt = int(parts[4])
+        dir_angle = int(parts[5])
 
-    elif action == 'backward':
-        spd = int(parts[1]) if len(parts) > 1 else speed
-        if spd > 60:
-            spd = 60
-        speed = spd
-        status = 'backward'
-        move(status, speed)
+        # 限幅
+        spd = max(0, min(100, spd))
+        pan = max(-90, min(90, pan))
+        tilt = max(-35, min(65, tilt))
+        dir_angle = max(-30, min(30, dir_angle))
 
-    elif action in ('left', 'turn_left'):
-        status = 'turn left'
-        move(status, speed)
+        # 应用舵机角度
+        px.set_cam_pan_angle(pan)
+        px.set_cam_tilt_angle(tilt)
+        px.set_dir_servo_angle(dir_angle)
+        cam_pan_angle = pan
+        cam_tilt_angle = tilt
 
-    elif action in ('right', 'turn_right'):
-        status = 'turn right'
-        move(status, speed)
-
-    elif action == 'stop':
-        status = 'stop'
-        move(status, 0)
-
-    elif action == 'speed':
-        spd = int(parts[1])
-        speed = max(0, min(100, spd))
-
-    elif action == 'pan':
-        angle = int(parts[1])
-        cam_pan_angle = max(-90, min(90, angle))
-        px.set_cam_pan_angle(cam_pan_angle)
-
-    elif action == 'tilt':
-        angle = int(parts[1])
-        cam_tilt_angle = max(-35, min(65, angle))
-        px.set_cam_tilt_angle(cam_tilt_angle)
-
-    elif action == 'cam_reset':
-        cam_pan_angle = 0
-        cam_tilt_angle = 0
-        px.set_cam_pan_angle(0)
-        px.set_cam_tilt_angle(0)
+        # 应用运动
+        if direction == 'stop' or spd == 0:
+            px.stop()
+            status = 'stop'
+            speed = 0
+        elif direction == 'forward':
+            px.forward(spd)
+            status = 'forward'
+            speed = spd
+        elif direction == 'backward':
+            px.backward(spd)
+            status = 'backward'
+            speed = spd
 
     elif action == 'horn':
         music.sound_play_threading(SOUND_HORN)

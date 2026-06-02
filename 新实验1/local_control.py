@@ -266,91 +266,86 @@ class RemoteController:
             print(f"[控制] 发送失败，正在重连: {e}")
             self.sock = None
 
+    def _send_state(self):
+        """发送完整状态包: state <direction> <speed> <pan> <tilt> <dir_angle>"""
+        self.send_command(
+            f'state {self.status} {self.speed} '
+            f'{self.pan_angle} {self.tilt_angle} {self.dir_angle}'
+        )
+
     def process_key(self, key_char):
         k = key_char.lower()
 
-        if k == 'f':
+        if k == 'f':         # 停止
             self.status = 'stop'
-            self.send_command('stop')
+            self.speed = 0
 
-        elif k == 'w':
+        elif k == 'w':       # 前进（直行）
             if self.speed == 0:
-                self.speed = 10
-            if self.status != 'forward' and self.speed > 60:
-                self.speed = 60
+                self.speed = 50
             self.status = 'forward'
-            self.send_command(f'forward {self.speed}')
+            self.dir_angle = 0
 
-        elif k == 's':
+        elif k == 's':       # 后退（直行）
             if self.speed == 0:
-                self.speed = 10
-            if self.status != 'backward' and self.speed > 60:
-                self.speed = 60
+                self.speed = 50
             self.status = 'backward'
-            self.send_command(f'backward {self.speed}')
+            self.dir_angle = 0
 
-        elif k == 'a':
+        elif k == 'a':       # 左转（方向舵机左偏 + 前进）
             if self.speed == 0:
-                self.speed = 10
-            self.status = 'turn left'
-            self.send_command('left')
+                self.speed = 50
+            self.status = 'forward'
+            self.dir_angle = -20
 
-        elif k == 'd':
+        elif k == 'd':       # 右转（方向舵机右偏 + 前进）
             if self.speed == 0:
-                self.speed = 10
-            self.status = 'turn right'
-            self.send_command('right')
+                self.speed = 50
+            self.status = 'forward'
+            self.dir_angle = 20
 
-        elif k == 'o':
+        elif k == 'o':       # 加速
             if self.speed <= 90:
                 self.speed += 10
-            if self.status in ('forward', 'backward'):
-                self.send_command(f'{self.status} {self.speed}')
 
-        elif k == 'p':
+        elif k == 'p':       # 减速
             if self.speed >= 10:
                 self.speed -= 10
             if self.speed == 0:
                 self.status = 'stop'
-                self.send_command('stop')
-            elif self.status in ('forward', 'backward'):
-                self.send_command(f'{self.status} {self.speed}')
 
-        elif k == 'i':
+        elif k == 'i':       # 云台上仰
             with self.sensor_lock:
-                a = max(-35, min(65, self.tilt_angle - 5))
-                self.tilt_angle = a
-            self.send_command(f'tilt {a}')
+                self.tilt_angle = max(-35, min(65, self.tilt_angle - 5))
 
-        elif k == 'k':
+        elif k == 'k':       # 云台下俯
             with self.sensor_lock:
-                a = max(-35, min(65, self.tilt_angle + 5))
-                self.tilt_angle = a
-            self.send_command(f'tilt {a}')
+                self.tilt_angle = max(-35, min(65, self.tilt_angle + 5))
 
-        elif k == 'j':
+        elif k == 'j':       # 云台左转
             with self.sensor_lock:
-                a = max(-90, min(90, self.pan_angle - 5))
-                self.pan_angle = a
-            self.send_command(f'pan {a}')
+                self.pan_angle = max(-90, min(90, self.pan_angle - 5))
 
-        elif k == 'l':
+        elif k == 'l':       # 云台右转
             with self.sensor_lock:
-                a = max(-90, min(90, self.pan_angle + 5))
-                self.pan_angle = a
-            self.send_command(f'pan {a}')
+                self.pan_angle = max(-90, min(90, self.pan_angle + 5))
 
-        elif k == 'r':
+        elif k == 'r':       # 云台复位
             with self.sensor_lock:
                 self.pan_angle = 0
                 self.tilt_angle = 0
-            self.send_command('cam_reset')
+                self.dir_angle = 0
 
-        elif k == 'h':
+        elif k == 'h':       # 鸣笛（单次指令）
             self.send_command('horn')
+            return
 
-        elif k == 't':
+        elif k == 't':       # 拍照（单次指令）
             self.send_command('photo')
+            return
+
+        # 发送完整状态包
+        self._send_state()
 
     # -- 视频流水线 -----------------------------------------------------------
 
