@@ -1,0 +1,14 @@
+# --- 本机远程控制 Picar-X ---
+# 在 venv 中安装:  pip install -r requirements.txt
+
+# --- YOLO 推理 (GPU/CPU) ---
+ultralytics>=8.2.0
+
+# --- Web 服务器 ---
+flask>=3.0.0
+
+# --- 图像处理 ---
+opencv-python>=4.8.0
+
+# --- 数值计算 ---
+numpy>=1.24.0
