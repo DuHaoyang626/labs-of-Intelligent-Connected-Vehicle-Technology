@@ -36,21 +36,24 @@ controller = None
 # ---------------------------------------------------------------------------
 
 # 红色（HSV 中红色分布在 0° 两侧）
-RED_LOWER1 = (0, 60, 120)
+RED_LOWER1 = (0, 60, 150)
 RED_UPPER1 = (10, 255, 255)
-RED_LOWER2 = (165, 60, 120)
+RED_LOWER2 = (165, 60, 150)
 RED_UPPER2 = (180, 255, 255)
 
 # 黄色
-YELLOW_LOWER = (15, 60, 120)
+YELLOW_LOWER = (15, 60, 150)
 YELLOW_UPPER = (35, 255, 255)
 
 # 绿色
-GREEN_LOWER = (40, 60, 80)
+GREEN_LOWER = (40, 60, 150)
 GREEN_UPPER = (85, 255, 255)
 
-# 当 roi 中某颜色像素数低于此值，认为该灯未亮起
-MIN_PIXEL_THRESHOLD = 15
+# 亮度门控阈值：V 值高于此才认为是"亮起的灯"
+BRIGHTNESS_THRESHOLD = 160
+
+# ROI 中亮起彩色像素数低于此值，认为该灯未亮起
+MIN_PIXEL_THRESHOLD = 8
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +135,14 @@ class TrafficLightDetector:
 
     @staticmethod
     def _analyze_roi(roi):
-        """对红绿灯 ROI 做 HSV 二值化，返回 dominant color 和像素计数."""
+        """分析红绿灯 ROI 中哪个灯亮起。
+
+        核心思路：真实红绿灯亮起时 ≈ 白色（高亮度 V），熄灭时 ≈ 黑色（低亮度 V）。
+        1. 从 ROI 中提取亮度掩码（V > BRIGHTNESS_THRESHOLD 的像素）
+        2. 分别对红/黄/绿三色做颜色掩码
+        3. 颜色掩码 ∩ 亮度掩码 = 真正亮起的彩色像素
+        4. 计数最高的颜色即为当前亮起的灯；无则返回 unknown
+        """
         if roi.size == 0:
             return 'unknown', {'red': 0, 'yellow': 0, 'green': 0}
 
@@ -147,6 +157,10 @@ class TrafficLightDetector:
         # 高斯模糊降噪
         blurred = cv2.GaussianBlur(roi, (5, 5), 0)
         hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+        v_channel = hsv[:, :, 2]
+
+        # --- 亮度掩码：只保留 V > BRIGHTNESS_THRESHOLD 的亮像素 ---
+        _, bright_mask = cv2.threshold(v_channel, BRIGHTNESS_THRESHOLD, 255, cv2.THRESH_BINARY)
 
         # --- 三色掩码 ---
         # 红色（两区间合并）
@@ -160,23 +174,26 @@ class TrafficLightDetector:
         # 绿色
         mask_green = cv2.inRange(hsv, GREEN_LOWER, GREEN_UPPER)
 
-        # 形态学开运算 — 去除孤立噪点
+        # --- 取交集：亮起的彩色像素 = 颜色掩码 & 亮度掩码 ---
         kernel = np.ones((3, 3), np.uint8)
-        mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_OPEN, kernel)
-        mask_yellow = cv2.morphologyEx(mask_yellow, cv2.MORPH_OPEN, kernel)
-        mask_green = cv2.morphologyEx(mask_green, cv2.MORPH_OPEN, kernel)
+        red_lit = cv2.morphologyEx(
+            cv2.bitwise_and(mask_red, bright_mask), cv2.MORPH_OPEN, kernel)
+        yellow_lit = cv2.morphologyEx(
+            cv2.bitwise_and(mask_yellow, bright_mask), cv2.MORPH_OPEN, kernel)
+        green_lit = cv2.morphologyEx(
+            cv2.bitwise_and(mask_green, bright_mask), cv2.MORPH_OPEN, kernel)
 
-        r_px = cv2.countNonZero(mask_red)
-        y_px = cv2.countNonZero(mask_yellow)
-        g_px = cv2.countNonZero(mask_green)
+        r_px = cv2.countNonZero(red_lit)
+        y_px = cv2.countNonZero(yellow_lit)
+        g_px = cv2.countNonZero(green_lit)
 
         counts = {'red': r_px, 'yellow': y_px, 'green': g_px}
 
-        # 取像素数最多的颜色
+        # 取亮起彩色像素数最多的颜色
         dominant = max(counts, key=counts.get)
         max_val = counts[dominant]
 
-        # 低于阈值 = 无灯亮起
+        # 低于阈值 = 没有灯真正亮起（可能只是环境光或灯罩反光）
         if max_val < MIN_PIXEL_THRESHOLD:
             return 'unknown', counts
 
@@ -214,8 +231,8 @@ class TrafficLightDetector:
         cv2.putText(frame, label, (x1 + 5, y1 - 5),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 2)
 
-        # 像素计数（框下方）
-        cnt_text = f"R:{counts['red']} Y:{counts['yellow']} G:{counts['green']}"
+        # 亮起像素计数（框下方）
+        cnt_text = f"⬆R:{counts['red']} Y:{counts['yellow']} G:{counts['green']}"
         cv2.putText(frame, cnt_text, (x1, y2 + 18),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.4, color_bgr, 1)
 
